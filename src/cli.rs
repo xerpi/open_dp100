@@ -1,5 +1,5 @@
-use clap::{Command, Arg, arg, value_parser};
-use open_dp100::{OpenDP100, BasicInfo, BasicSet, OutputState, SystemInfo,};
+use clap::{arg, value_parser, Command};
+use open_dp100::{BasicInfo, BasicSet, OpenDP100, OutputState, SystemInfo};
 
 #[derive(Debug)]
 struct Config {
@@ -11,7 +11,6 @@ struct Config {
     ovp: Option<f32>,
     ocp: Option<f32>,
 }
-
 
 // Define a trait for printing the structures
 pub trait Printable {
@@ -37,7 +36,7 @@ impl Printable for BasicInfo {
 
 impl Printable for BasicSet {
     fn print(&self) {
-        print!("Basic Set <{}>: ",self.index);
+        print!("Basic Set <{}>: ", self.index);
         match self.state {
             OutputState::On => println!("On"),
             OutputState::Off => println!("Off"),
@@ -113,43 +112,54 @@ fn main() {
             for i in 0..count {
                 let device = OpenDP100::new(i).unwrap();
                 let info = device.device_info().unwrap();
-                let dev_type = String::from_utf8_lossy(&info.dev_type).trim_end_matches(|c:char| c == '\0' || !c.is_ascii()).to_string();
-                let dev_sn = info.dev_sn[8..].iter().map(|&x| format!("{:02X}", x)).collect::<Vec<String>>().join("");
+                let dev_type = String::from_utf8_lossy(&info.dev_type)
+                    .trim_end_matches(|c: char| c == '\0' || !c.is_ascii())
+                    .to_string();
+                let dev_sn = info.dev_sn[8..]
+                    .iter()
+                    .map(|&x| format!("{:02X}", x))
+                    .collect::<Vec<String>>()
+                    .join("");
                 println!(
                     "{} {} sn:{} hdw_ver:{}.{} app_ver:{}.{} {:04}-{:02}-{:02}",
                     i + 1,
                     dev_type,
                     dev_sn,
-                    info.hdw_ver/10,info.hdw_ver%10,
-                    info.app_ver/10,info.app_ver%10,
+                    info.hdw_ver / 10,
+                    info.hdw_ver % 10,
+                    info.app_ver / 10,
+                    info.app_ver % 10,
                     info.year,
                     info.moon,
                     info.day
                 );
             }
-
         }
         Some(("status", status_matches)) => {
-            let device_index:u8 = *status_matches.get_one("device").expect("device setting failed");
-            
+            let device_index: u8 = *status_matches
+                .get_one("device")
+                .expect("device setting failed");
+
             let device = OpenDP100::new(device_index as usize).expect("open device failed");
-            
+
             let info = device.device_info().unwrap();
 
-            let dev_type = String::from_utf8_lossy(&info.dev_type).trim_end_matches(|c:char| c == '\0' || !c.is_ascii()).to_string();
-            println!("Device {} name:{}",device_index,dev_type);
+            let dev_type = String::from_utf8_lossy(&info.dev_type)
+                .trim_end_matches(|c: char| c == '\0' || !c.is_ascii())
+                .to_string();
+            println!("Device {} name:{}", device_index, dev_type);
             device.basic_info().unwrap().print();
-            
+
             if status_matches.get_flag("system") {
                 device.sys_info().unwrap().print();
             }
 
             let current_config = device.current_basic_set().unwrap();
             if status_matches.get_flag("allconfig") {
-                for i in 0..9{
-                    if current_config.index == i{
+                for i in 0..10 {
+                    if current_config.index == i {
                         print!("[*] ",);
-                    }else{
+                    } else {
                         print!("[ ] ",);
                     }
                     device.basic_set(i as usize).unwrap().print();
@@ -157,99 +167,110 @@ fn main() {
             } else {
                 current_config.print();
             }
-
-
         }
         Some(("set", set_matches)) => {
             let mut config = Config {
-              config: None,
-              on: false,
-              off: false,
-              vout: None,
-              iout: None,
-              ovp: None,
-              ocp: None,
+                config: None,
+                on: false,
+                off: false,
+                vout: None,
+                iout: None,
+                ovp: None,
+                ocp: None,
             };
-            let device_index:u8 = *set_matches.get_one("device").expect("device setting failed");
-   
+            let device_index: u8 = *set_matches
+                .get_one("device")
+                .expect("device setting failed");
+
             let device = OpenDP100::new(device_index as usize).expect("open device failed");
-    
-            let keyvalues:Vec<&String> = set_matches.get_many("keyvalue")
+
+            let keyvalues: Vec<&String> = set_matches
+                .get_many("keyvalue")
                 .expect("at least on param should be set")
                 .collect();
 
             for keyvalue in keyvalues.iter() {
-              let kv: Vec<&str> = keyvalue.split("=").collect();
-              match kv[0] {
-                  "config" => {
-                      let index = kv[1].parse::<u32>().unwrap();
-                      if index > 9 {
-                          panic!("config index out of range");
-                      }
-                      config.config = Some(index);
-                  },
-                  "on" => config.on = true,
-                  "off" => config.off = true,
-                  "v" => {
-                      let volt = kv[1].parse::<f32>().unwrap();
-                      if volt < 0.0 || volt > 36.0 {
-                          panic!("vout out of range");
-                      }
-                      config.vout = Some(volt);
-                  },
-                  "i" => {
-                      let current = kv[1].parse::<f32>().unwrap();
-                      if current < 0.0 || current > 36.0 {
-                          panic!("iout out of range");
-                      }
-                      config.iout = Some(current);
-                  },
-                  "ov" => {
-                      let volt = kv[1].parse::<f32>().unwrap();
-                      if volt < 0.0 || volt > 36.0 {
-                          panic!("ovp out of range");
-                      }
-                      config.ovp = Some(volt);
-                  },
-                  "oc" => {
-                      let current = kv[1].parse::<f32>().unwrap();
-                      if current < 0.0 || current > 36.0 {
-                          panic!("ocp out of range");
-                      }
-                      config.ocp = Some(current);
-                  },
-                  _ => panic!("Invalid key-value pair"),
-              }
+                let kv: Vec<&str> = keyvalue.split("=").collect();
+                match kv[0] {
+                    "config" => {
+                        let index = kv[1].parse::<u32>().unwrap();
+                        if index > 9 {
+                            panic!("config index out of range");
+                        }
+                        config.config = Some(index);
+                    }
+                    "on" => config.on = true,
+                    "off" => config.off = true,
+                    "v" => {
+                        let volt = kv[1].parse::<f32>().unwrap();
+                        if volt < 0.0 || volt > 36.0 {
+                            panic!("vout out of range");
+                        }
+                        config.vout = Some(volt);
+                    }
+                    "i" => {
+                        let current = kv[1].parse::<f32>().unwrap();
+                        if current < 0.0 || current > 10.0 {
+                            panic!("iout out of range");
+                        }
+                        config.iout = Some(current);
+                    }
+                    "ov" => {
+                        let volt = kv[1].parse::<f32>().unwrap();
+                        if volt < 0.0 || volt > 36.0 {
+                            panic!("ovp out of range");
+                        }
+                        config.ovp = Some(volt);
+                    }
+                    "oc" => {
+                        let current = kv[1].parse::<f32>().unwrap();
+                        if current < 0.0 || current > 10.0 {
+                            panic!("ocp out of range");
+                        }
+                        config.ocp = Some(current);
+                    }
+                    _ => panic!("Invalid key-value pair"),
+                }
             }
 
-            if let Some(idx) = config.config{
+            if let Some(idx) = config.config {
                 let current_set = device.current_basic_set().unwrap();
                 if current_set.index != idx as u8 {
                     device.switch_config(idx as usize).unwrap();
                 }
             }
             let mut current_set = device.current_basic_set().unwrap();
+            let requested_state = if config.on {
+                Some(OutputState::On)
+            } else if config.off {
+                Some(OutputState::Off)
+            } else {
+                None
+            };
+            let mut values_changed = false;
 
-            if config.on {
-                current_set.state = OutputState::On;
-            }
-            if config.off {
-                current_set.state = OutputState::Off;
-            }
-            if let Some(vout) = config.vout{
+            if let Some(vout) = config.vout {
                 current_set.vo_set = (vout * 1000.0) as u16;
+                values_changed = true;
             }
-            if let Some(iout) = config.iout{
+            if let Some(iout) = config.iout {
                 current_set.io_set = (iout * 1000.0) as u16;
-            }            
-            if let Some(ovp) = config.ovp{
+                values_changed = true;
+            }
+            if let Some(ovp) = config.ovp {
                 current_set.ovp_set = (ovp * 1000.0) as u16;
+                values_changed = true;
             }
-            if let Some(ocp) = config.ocp{
+            if let Some(ocp) = config.ocp {
                 current_set.ocp_set = (ocp * 1000.0) as u16;
+                values_changed = true;
             }
-            device.update_basic_set(&current_set, false).unwrap();
-
+            if values_changed {
+                device.update_basic_set(&current_set).unwrap();
+            }
+            if let Some(state) = requested_state {
+                device.set_output_on(state).unwrap();
+            }
         }
         _ => unreachable!(),
     }
